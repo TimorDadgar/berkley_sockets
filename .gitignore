@@ -1,3 +1,5 @@
 .vscode*
 build/*
 include/*
+*.exe
+hard_things_to_remember.txt
