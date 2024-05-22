@@ -32,7 +32,7 @@ int main() {
     serverAddr.sin_port = htons(stoi(DEFAULT_PORT));
 
     // Send data to the server
-    const char* data = "Hello from client";
+    const char* data = "W";
     int bytesSent = sendto(sendSocket, data, strlen(data), 0, (const sockaddr*)&serverAddr, sizeof(serverAddr));
     if (bytesSent == SOCKET_ERROR) {
         std::cerr << "sendto failed: " << WSAGetLastError() << std::endl;

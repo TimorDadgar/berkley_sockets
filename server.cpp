@@ -10,6 +10,15 @@ using namespace std;
 #include <SDL2/SDL.h>
 #include "server.hpp"
 
+
+SocketAddress::SocketAddress(uint32_t inAddress, uint16_t inPort)
+{
+    GetAsSockAddrIn()->sin_family = AF_INET;
+    GetAsSockAddrIn()->sin_addr.S_un.S_addr = htonl(inAddress);
+    GetAsSockAddrIn()->sin_port = htons(inPort);
+}
+
+
 int UDPSocket::Bind(const SocketAddress& inBindAddress)
 {
     int err = bind(mSocket, &inBindAddress.mSockAddr, inBindAddress.GetSize());
@@ -27,26 +36,36 @@ int UDPSocket::Bind(const SocketAddress& inBindAddress)
 int UDPSocket::SendTo(const void* inData, int inLen,
                         const SocketAddress& inTo)
 {
-    int byteSentCount = sendto( mSocket,
+    int byteSentCount = sendto( mSocket, static_cast<const char*>( inData), inLen, 0, &inTo.mSockAddr, inTo.GetSize());
 
-static_cast<const char*>( inData),
-inLen,
-0, &inTo.mSockAddr, inTo.GetSize());
+    if(byteSentCount >= 0)
+    {
+        return byteSentCount;
+    }
+    else
+    {
+        //return error as negative number
+        // SocketUtil::ReportError(L"UDPSocket::SendTo");
+        return -1;
+    }
+}
 
-if(byteSentCount >= 0)
+int UDPSocket::ReceiveFrom(void* inBuffer, int inMaxLength, SocketAddress& outFrom)
 {
-    return byteSentCount;
-}
-else
-{
-    //return error as negative number
-    // SocketUtil::ReportError(L"UDPSocket::SendTo");
-    return -1;
-}
-}
-int UDPSocket::ReceiveFrom(void* inBuffer, int inLen, SocketAddress& outFrom)
-{
-    return 0;
+    int fromLength = outFrom.GetSize();
+    int readByteCount = recvfrom(mSocket, static_cast<char*>(inBuffer), inMaxLength,
+     0, &outFrom.mSockAddr, &fromLength);
+
+    if(readByteCount >= 0)
+    {
+        return readByteCount;
+    }
+    else
+    {
+        // SocketUtil::ReportError(L"UDPSocket::ReceiveFrom");
+        // return -SocketUtil::GetLastError();
+        return -1;
+    }
 }
 
 UDPSocket::~UDPSocket()
@@ -72,32 +91,46 @@ int berkley_socket(){
         return 1;
     }
 
-    sockaddr_in serverAddr;
-    memset(serverAddr.sin_zero, 0, sizeof(serverAddr.sin_zero));
-    serverAddr.sin_family = AF_INET;
-    serverAddr.sin_port = htons(45000);
-    serverAddr.sin_addr.S_un.S_un_b.s_b1 = 65;
-    serverAddr.sin_addr.S_un.S_un_b.s_b2 = 254;
-    serverAddr.sin_addr.S_un.S_un_b.s_b3 = 248;
-    serverAddr.sin_addr.S_un.S_un_b.s_b4 = 180;
-    serverAddr.sin_addr.s_addr = INADDR_ANY;
+    sockaddr_in inServerAddr;
+    memset(inServerAddr.sin_zero, 0, sizeof(inServerAddr.sin_zero));
+    inServerAddr.sin_family = AF_INET;
+    inServerAddr.sin_port = htons(45000);
+    inServerAddr.sin_addr.S_un.S_un_b.s_b1 = 65;
+    inServerAddr.sin_addr.S_un.S_un_b.s_b2 = 254;
+    inServerAddr.sin_addr.S_un.S_un_b.s_b3 = 248;
+    inServerAddr.sin_addr.S_un.S_un_b.s_b4 = 180;
+    inServerAddr.sin_addr.s_addr = INADDR_ANY;
 
     LPCSTR ipv4_address_custom = "127.0.0.1";
     // Does the work of translating human readable string into socket address/binary IP address
-    InetPton(AF_INET, ipv4_address_custom, &serverAddr.sin_addr);
+    InetPton(AF_INET, ipv4_address_custom, &inServerAddr.sin_addr);
     // // InetPton does not do a DNS lookup, therefore use this then
     // int getaddrinfo(const char *hostname, const char *servname, const addrinfo *hints, addrinfo **res);
 
-    bind(serverSocket, (struct sockaddr*)&serverAddr, sizeof(serverAddr));
+    // UDP Socket Class Wrapper for Type Safety and security abstraction
+    UDPSocketPtr UDPSocketRef = std::make_shared<UDPSocket>(serverSocket);
+    // The octets are: 127 (0xC0), 0, 0, 1, using bitwise operators
+    uint32_t ipAddress = (127 << 24) | (0 << 16) | (0 << 8) | 1;
+    // Example port number: 8080
+    uint16_t port = 45000;
+    SocketAddress ServerAddr(ipAddress, port);
+
+    UDPSocketRef->Bind(ServerAddr);
+    // bind(serverSocket, (struct sockaddr*)&inServerAddr, sizeof(inServerAddr));
+
     // MTU for Ethernet is 1500 bytes,
     auto data = "a"; 
     // a good rule of thumb is to avoid sending datagrams with data larger than 1300 bytes.
-    // int bytesSent = sendto(serverSocket, data, strlen(data), 0, (const sockaddr*)&serverAddr, sizeof(serverAddr));
+    // int bytesSent = sendto(serverSocket, data, strlen(data), 0, (const sockaddr*)&inServerAddr, sizeof(inServerAddr));
 
     char buffer[1300];
     sockaddr_in fromAddr;
     int fromlen = sizeof(fromAddr);
-    int bytesReceived = recvfrom(serverSocket, buffer, sizeof(buffer), 0, (sockaddr*)&fromAddr, &fromlen);
+    SocketAddress fromSocketAddr(ipAddress, 0);
+
+    // using Type Safe UDP class instead of direct call
+    int bytesReceived = UDPSocketRef->ReceiveFrom(buffer, sizeof(buffer), fromSocketAddr);
+    // int bytesReceived = recvfrom(serverSocket, buffer, sizeof(buffer), 0, (sockaddr*)&fromAddr, &fromlen);
     if (bytesReceived == -1)
     {
         printf("recvfrom failed: %d\n", WSAGetLastError());
