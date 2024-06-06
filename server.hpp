@@ -5,6 +5,8 @@
 #include <ws2tcpip.h>
 #include <memory>
 
+#include "Ball/ball.h"
+
 class SocketAddress
 {
 public:
@@ -26,15 +28,27 @@ public:
     int Bind(const SocketAddress& inToAddress);
     int SendTo(const void* inData, int inLen, const SocketAddress& inTo);
     int ReceiveFrom(void* inBuffer, int inLen, SocketAddress& outFrom);
+    SOCKET mSocket;
 private:
     friend class SocketUtil;
     // Have constructor like this if using SocketUtil
     // UDPSocket(SOCKET inSocket) : mSocket(inSocket) {};
-    SOCKET mSocket;
 };
 typedef std::shared_ptr<UDPSocket> UDPSocketPtr;
 
-int start_pong_game();
-int berkley_socket();
+class Server
+{
+public:
+    Server(){outBallState = std::make_shared<BallState>();};
+    UDPSocketPtr UDPSocketRef;
+    int start_pong_game();
+    int berkley_socket();
+    int clean_up();
+    int client_input();
+private: 
+    char* client_input_data;
+    // std::string client_input_buffer;
+    std::shared_ptr<BallState> outBallState;
+};
 
 #endif // SERVER_HPP

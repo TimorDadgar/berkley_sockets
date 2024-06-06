@@ -73,8 +73,8 @@ UDPSocket::~UDPSocket()
     closesocket(mSocket);
 }
 
-
-int berkley_socket(){
+int Server::berkley_socket()
+{
     // Initialize Winsock
     WSADATA wsaData;
     int result = WSAStartup(MAKEWORD(2, 2), &wsaData);
@@ -108,7 +108,7 @@ int berkley_socket(){
     // int getaddrinfo(const char *hostname, const char *servname, const addrinfo *hints, addrinfo **res);
 
     // UDP Socket Class Wrapper for Type Safety and security abstraction
-    UDPSocketPtr UDPSocketRef = std::make_shared<UDPSocket>(serverSocket);
+    this->UDPSocketRef = std::make_shared<UDPSocket>(serverSocket);
     // The octets are: 127 (0xC0), 0, 0, 1, using bitwise operators
     uint32_t ipAddress = (127 << 24) | (0 << 16) | (0 << 8) | 1;
     // Example port number: 8080
@@ -118,16 +118,27 @@ int berkley_socket(){
     UDPSocketRef->Bind(ServerAddr);
     // bind(serverSocket, (struct sockaddr*)&inServerAddr, sizeof(inServerAddr));
 
+    // Send Data to client
     // MTU for Ethernet is 1500 bytes,
-    auto data = "a"; 
-    // a good rule of thumb is to avoid sending datagrams with data larger than 1300 bytes.
-    // int bytesSent = sendto(serverSocket, data, strlen(data), 0, (const sockaddr*)&inServerAddr, sizeof(inServerAddr));
+    const char* data = "W"; 
 
+    outBallState->mPosX = 11;
+
+    SocketAddress ClientInAddr(ipAddress, port);
+    // a good rule of thumb is to avoid sending datagrams with data larger than 1300 bytes.
+    UDPSocketRef->SendTo(reinterpret_cast<const char*>(outBallState.get()), sizeof(BallState), ClientInAddr);
+    // UDPSocketRef->SendTo(data, strlen(data), ClientInAddr);
+    return 0;
+}
+
+
+int Server::client_input(){
+    uint32_t ipAddress = (127 << 24) | (0 << 16) | (0 << 8) | 1;
     char buffer[1300];
     sockaddr_in fromAddr;
     int fromlen = sizeof(fromAddr);
     SocketAddress fromSocketAddr(ipAddress, 0);
-
+    
     // using Type Safe UDP class instead of direct call
     int bytesReceived = UDPSocketRef->ReceiveFrom(buffer, sizeof(buffer), fromSocketAddr);
     // int bytesReceived = recvfrom(serverSocket, buffer, sizeof(buffer), 0, (sockaddr*)&fromAddr, &fromlen);
@@ -135,25 +146,34 @@ int berkley_socket(){
     {
         printf("recvfrom failed: %d\n", WSAGetLastError());
         return 1;
-    }
+    }; 
     std::cout << "Bytes received: " << bytesReceived << std::endl;
+    // Print the received data up to the number of bytes received
+    std::string client_input_data(buffer, bytesReceived);
+    std::cout << client_input_data << std::endl;
     
-    if(shutdown(serverSocket, SD_SEND)){
+    return 0;
+}
+
+int Server::clean_up(){
+    // int bytesSent = sendto(serverSocket, data, strlen(data), 0, (const sockaddr*)&inServerAddr, sizeof(inServerAddr));
+    if(shutdown(UDPSocketRef->mSocket, SD_SEND)){
         printf("Error shutting down socket: %d\n", WSAGetLastError());
     }
 
-    if(closesocket(serverSocket)){
+    if(closesocket(UDPSocketRef->mSocket)){
         printf("Error shutting down socket: %d\n", WSAGetLastError());
     }
 
     // Shutdown windows socket interface
-    result = WSACleanup();
+    int result = WSACleanup();
     if (result != 0) {
         printf("WSACleanup failed: %d\n", WSAGetLastError());
         return 1;
     }
     return 0;
 }
+
 
 // Window dimensions
 const int WINDOW_WIDTH = 800;
@@ -168,7 +188,7 @@ const int BALL_SIZE = 15;
 const int BALL_SPEED = 5;
 
 
-int start_pong_game(){
+int Server::start_pong_game(){
     
     // Initialize SDL
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
